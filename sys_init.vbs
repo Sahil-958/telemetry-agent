@@ -1,2 +1,2 @@
 Set obj = CreateObject("WScript.Shell")
-obj.Run "python agent.py", 0, False
+obj.Run "python win_svc.py", 0, False
