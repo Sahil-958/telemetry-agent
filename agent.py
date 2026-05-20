@@ -85,13 +85,20 @@ def send_to_telegram(window_title):
         if topic_id:
             payload["message_thread_id"] = topic_id
             
-        resp = requests.post(url, data=payload, files=files)
-        
-        # Fallback for General topic if thread ID 1 is rejected
-        if not resp.json().get("ok") and topic_id == "1":
-            print("Topic 1 failed, attempting send to General (no thread ID)...")
-            del payload["message_thread_id"]
-            requests.post(url, data=payload, files=files)
+        try:
+            resp = requests.post(url, data=payload, files=files)
+            result = resp.json()
+            if not result.get("ok"):
+                print(f"FAILED to send {data_type}: {result.get('description')}")
+                # Fallback for General topic if thread ID 1 is rejected
+                if topic_id == "1":
+                    print("Topic 1 failed, attempting send to General (no thread ID)...")
+                    del payload["message_thread_id"]
+                    requests.post(url, data=payload, files=files)
+            else:
+                print(f"SUCCESS: {data_type} sent to Topic {topic_id if topic_id else 'General'}")
+        except Exception as e:
+            print(f"NETWORK ERROR sending {data_type}: {e}")
 
     # Send Screenshot to TOPIC_SCREENSHOT
     if os.path.exists("screen.jpg"):
