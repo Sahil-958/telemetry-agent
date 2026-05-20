@@ -1,0 +1,9 @@
+opencv-python
+sounddevice
+scipy
+pygetwindow
+requests
+python-dotenv
+numpy
+Pillow
+pywin32
