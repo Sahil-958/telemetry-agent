@@ -50,7 +50,9 @@ def capture_webcam(filename):
     time.sleep(0.5)
     ret, frame = cam.read()
     if ret:
-        cv2.imwrite(filename, frame)
+        # Encode as JPG manually since filename has no .jpg extension
+        _, buffer = cv2.imencode('.jpg', frame)
+        buffer.tofile(filename)
     
     cam.release()
     return ret
@@ -58,7 +60,8 @@ def capture_webcam(filename):
 def capture_screenshot(filename):
     try:
         screenshot = ImageGrab.grab()
-        screenshot.save(filename)
+        # Force JPEG format since filename has no .jpg extension
+        screenshot.save(filename, format='JPEG')
         return True
     except Exception:
         return False
