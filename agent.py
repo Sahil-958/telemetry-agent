@@ -117,9 +117,12 @@ def send_to_telegram(window_title):
 
 def main():
     if not TOKEN or not CHAT_ID:
-        print("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID in .env file.")
+        print(f"ERROR: Missing configuration in .env file.")
+        print(f"TOKEN: {'Found' if TOKEN else 'MISSING'}")
+        print(f"CHAT_ID: {'Found' if CHAT_ID else 'MISSING'}")
         return
 
+    print(f"DEBUG: Using Chat ID: {CHAT_ID}")
     print("Agent started. Press Ctrl+C to stop.")
     
     # Initial Consent/Notice
