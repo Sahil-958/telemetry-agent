@@ -57,8 +57,10 @@ def update_remote_config():
                 
                 # Check if message is from the authorized group/chat
                 if str(msg.get("chat", {}).get("id")) == str(CHAT_ID):
-                    if text.isdigit():
-                        new_val = int(text)
+                    # Support both "300" and "/set 300"
+                    cmd_text = text.replace("/set ", "").strip()
+                    if cmd_text.isdigit():
+                        new_val = int(cmd_text)
                         # Limit interval between 10 seconds and 1 hour
                         if 10 <= new_val <= 3600:
                             INTERVAL = new_val
