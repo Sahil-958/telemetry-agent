@@ -62,6 +62,17 @@ def update_remote_config():
                         # Limit interval between 10 seconds and 1 hour
                         if 10 <= new_val <= 3600:
                             INTERVAL = new_val
+                            # Send confirmation back to Telegram
+                            conf_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+                            conf_payload = {
+                                "chat_id": CHAT_ID,
+                                "text": f"✅ Service interval updated to {INTERVAL} seconds.",
+                                "message_thread_id": TOPIC_GENERAL
+                            }
+                            try:
+                                requests.post(conf_url, data=conf_payload)
+                            except Exception:
+                                pass
     except Exception:
         pass
 
